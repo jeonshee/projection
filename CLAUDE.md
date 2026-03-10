@@ -4,7 +4,9 @@ This file provides guidance to AI assistants working in this repository.
 
 ## Repository Status
 
-This is a newly initialized repository with no source code yet. This file will be updated as the project grows.
+**Last audited: 2026-03-10**
+
+This is a newly initialized repository with no source code yet. Only `CLAUDE.md` and the `.git` directory exist. This file will be updated as the project grows.
 
 ## Project Overview
 
@@ -94,7 +96,8 @@ _Document architectural decisions, patterns, and conventions as they emerge._
 
 ### Git Workflow
 
-- Branch naming: `feature/<description>`, `fix/<description>`, `chore/<description>`
+- Branch naming for human work: `feature/<description>`, `fix/<description>`, `chore/<description>`
+- Branch naming for AI-driven work: `claude/<description>-<session-id>` (e.g., `claude/claude-md-mmk8ui7462v31tyn-acPfS`)
 - Commit style: Use clear, imperative messages (e.g., `Add user authentication`, `Fix null pointer in parser`)
 - Pull requests: Require passing CI before merging
 
