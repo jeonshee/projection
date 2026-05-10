@@ -94,15 +94,21 @@ Notion에 자동 적재 + 갱신·만료 시점 자동 알림** 까지 동작합
 
 ## STEP 4 — 기존 Slack 앱 매니페스트 교체 (앱 삭제 X)
 
+> ⚠️ **반드시 STEP 3이 끝난 뒤에** 이 STEP을 진행하세요. STEP 3에서 받은
+> 두 URL이 없으면 매니페스트가 저장되지 않습니다 (placeholder 상태로는
+> Slack이 "url is invalid" 에러를 냄).
+
 1. https://api.slack.com/apps 접속 → 기존에 만들어둔 계약봇 앱 클릭
 2. 좌측 사이드바 **App Manifest** 클릭
-3. 화면에 보이는 기존 YAML 전체를 지우고, 이 레포의 `slack/manifest.yaml`
+3. 화면 상단의 **YAML** 탭을 선택 (JSON 탭이 아님 — JSON 탭에 YAML을
+   붙여넣으면 line 1 에러가 납니다)
+4. 화면에 보이는 기존 YAML 전체를 지우고, 이 레포의 `slack/manifest.yaml`
    내용을 통째로 붙여넣기
-4. 붙여넣은 YAML에서 두 자리를 STEP 3의 값으로 교체:
+5. 붙여넣은 YAML에서 두 자리를 STEP 3의 값으로 교체:
    - `<<REPLACE_WITH_N8N_WEBHOOK_A>>` → `N8N_WEBHOOK_URL_A`
    - `<<REPLACE_WITH_N8N_WEBHOOK_B>>` → `N8N_WEBHOOK_URL_B`
-5. 우상단 **Save Changes** 클릭
-6. "Reinstall your app to apply scope changes" 같은 노란 배너가 뜨면
+6. 우상단 **Save Changes** 클릭
+7. "Reinstall your app to apply scope changes" 같은 노란 배너가 뜨면
    클릭 → **Reinstall to Workspace** → 권한 동의
 
 > 이 방식은 앱을 삭제하지 않고 **설정만 덮어쓰기** 합니다. 토큰·앱 ID·설치
