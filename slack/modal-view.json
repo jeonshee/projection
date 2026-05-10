@@ -1,0 +1,133 @@
+{
+  "type": "modal",
+  "callback_id": "contract_submit",
+  "private_metadata": "contract_v1",
+  "title": {
+    "type": "plain_text",
+    "text": "계약 등록"
+  },
+  "submit": {
+    "type": "plain_text",
+    "text": "등록"
+  },
+  "close": {
+    "type": "plain_text",
+    "text": "취소"
+  },
+  "blocks": [
+    {
+      "type": "input",
+      "block_id": "vendor_name",
+      "label": { "type": "plain_text", "text": "거래처명" },
+      "element": {
+        "type": "plain_text_input",
+        "action_id": "value",
+        "placeholder": { "type": "plain_text", "text": "예: ㈜아무개" }
+      }
+    },
+    {
+      "type": "input",
+      "block_id": "service_name",
+      "label": { "type": "plain_text", "text": "서비스명" },
+      "element": {
+        "type": "plain_text_input",
+        "action_id": "value",
+        "placeholder": { "type": "plain_text", "text": "예: 클라우드 호스팅" }
+      }
+    },
+    {
+      "type": "input",
+      "block_id": "contract_purpose",
+      "optional": true,
+      "label": { "type": "plain_text", "text": "계약 목적" },
+      "element": {
+        "type": "plain_text_input",
+        "action_id": "value",
+        "multiline": true,
+        "placeholder": { "type": "plain_text", "text": "이 계약의 목적·범위를 간단히 적어주세요" }
+      }
+    },
+    {
+      "type": "input",
+      "block_id": "contract_start",
+      "label": { "type": "plain_text", "text": "계약 시작일" },
+      "element": {
+        "type": "datepicker",
+        "action_id": "value"
+      }
+    },
+    {
+      "type": "input",
+      "block_id": "contract_end",
+      "label": { "type": "plain_text", "text": "계약 종료일" },
+      "element": {
+        "type": "datepicker",
+        "action_id": "value"
+      }
+    },
+    {
+      "type": "input",
+      "block_id": "cost",
+      "optional": true,
+      "label": { "type": "plain_text", "text": "견적 비용 (KRW)" },
+      "element": {
+        "type": "number_input",
+        "action_id": "value",
+        "is_decimal_allowed": false,
+        "placeholder": { "type": "plain_text", "text": "예: 12000000" }
+      }
+    },
+    {
+      "type": "input",
+      "block_id": "owner_user",
+      "label": { "type": "plain_text", "text": "업무 담당자" },
+      "element": {
+        "type": "users_select",
+        "action_id": "value",
+        "placeholder": { "type": "plain_text", "text": "이 계약의 업무 담당자를 선택" }
+      }
+    },
+    {
+      "type": "input",
+      "block_id": "extra_notify_users",
+      "optional": true,
+      "label": { "type": "plain_text", "text": "추가 알림 받을 사람" },
+      "element": {
+        "type": "multi_users_select",
+        "action_id": "value",
+        "placeholder": { "type": "plain_text", "text": "필요시 다중 선택" }
+      }
+    },
+    {
+      "type": "input",
+      "block_id": "renewal_notify_date",
+      "optional": true,
+      "label": { "type": "plain_text", "text": "갱신 알림일" },
+      "hint": { "type": "plain_text", "text": "이날 09:00에 담당자들에게 자동 알림이 갑니다" },
+      "element": {
+        "type": "datepicker",
+        "action_id": "value"
+      }
+    },
+    {
+      "type": "input",
+      "block_id": "vendor_notify_date",
+      "optional": true,
+      "label": { "type": "plain_text", "text": "거래처 통지 의무일" },
+      "hint": { "type": "plain_text", "text": "거래처에 계약 갱신/종료 통지를 해야 하는 날짜 (있는 경우)" },
+      "element": {
+        "type": "datepicker",
+        "action_id": "value"
+      }
+    },
+    {
+      "type": "context",
+      "elements": [
+        {
+          "type": "mrkdwn",
+          "text": "📎 *첨부파일*: 등록 후 생성될 Notion 페이지에 직접 업로드해 주세요. (Slack 모달은 파일 업로드를 지원하지 않습니다)"
+        }
+      ]
+    }
+  ]
+}

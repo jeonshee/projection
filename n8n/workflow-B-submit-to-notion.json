@@ -1,0 +1,138 @@
+{
+  "name": "계약봇 B — 모달 제출 → Notion 적재",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "contract-bot-submit",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": false
+        }
+      },
+      "id": "node-webhook-b",
+      "name": "Slack Interactivity 수신",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 300],
+      "webhookId": "contract-bot-submit"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Slack은 view_submission payload를 application/x-www-form-urlencoded로 보냄.\n// body.payload 안에 JSON 문자열이 들어있음.\nconst raw = $input.first().json.body || {};\nconst payload = typeof raw.payload === 'string' ? JSON.parse(raw.payload) : raw.payload;\n\nif (!payload || payload.type !== 'view_submission') {\n  // 다른 인터랙션(버튼 클릭 등)은 무시\n  return [{ json: { skip: true } }];\n}\n\nconst v = payload.view.state.values;\nconst get = (block, action = 'value') => v?.[block]?.[action];\n\nconst vendorName       = get('vendor_name')?.value || '';\nconst serviceName      = get('service_name')?.value || '';\nconst contractPurpose  = get('contract_purpose')?.value || '';\nconst contractStart    = get('contract_start')?.selected_date || null;\nconst contractEnd      = get('contract_end')?.selected_date || null;\nconst costRaw          = get('cost')?.value;\nconst cost             = costRaw ? Number(costRaw) : null;\nconst ownerUser        = get('owner_user')?.selected_user || '';\nconst extraUsersArr    = get('extra_notify_users')?.selected_users || [];\nconst renewalNotify    = get('renewal_notify_date')?.selected_date || null;\nconst vendorNotify     = get('vendor_notify_date')?.selected_date || null;\n\nconst registrantId     = payload.user.id;\nconst registrantName   = payload.user.name;\n\nreturn [{\n  json: {\n    skip: false,\n    vendor_name: vendorName,\n    service_name: serviceName,\n    contract_purpose: contractPurpose,\n    contract_start: contractStart,\n    contract_end: contractEnd,\n    cost,\n    owner_user_id: ownerUser,\n    extra_user_ids: extraUsersArr.join(','),\n    renewal_notify_date: renewalNotify,\n    vendor_notify_date: vendorNotify,\n    registrant_id: registrantId,\n    registrant_name: registrantName\n  }\n}];"
+      },
+      "id": "node-parse-payload",
+      "name": "모달 입력값 파싱",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/pages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Notion-Version", "value": "2022-06-28" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"parent\": { \"database_id\": \"{{$env[\"NOTION_DATABASE_ID\"]}}\" },\n  \"properties\": {\n    \"거래처명\": { \"title\": [{ \"text\": { \"content\": \"{{$json[\"vendor_name\"]}}\" }}] },\n    \"서비스명\": { \"rich_text\": [{ \"text\": { \"content\": \"{{$json[\"service_name\"]}}\" }}] },\n    \"계약목적\": { \"rich_text\": [{ \"text\": { \"content\": \"{{$json[\"contract_purpose\"]}}\" }}] },\n    \"계약시작일\": { \"date\": { \"start\": \"{{$json[\"contract_start\"]}}\" }},\n    \"계약종료일\": { \"date\": { \"start\": \"{{$json[\"contract_end\"]}}\" }},\n    \"견적비용\": { \"number\": {{ $json[\"cost\"] === null ? null : $json[\"cost\"] }} },\n    \"등록 담당자\": { \"rich_text\": [{ \"text\": { \"content\": \"{{$json[\"registrant_id\"]}}\" }}] },\n    \"업무 담당자\": { \"rich_text\": [{ \"text\": { \"content\": \"{{$json[\"owner_user_id\"]}}\" }}] },\n    \"추가 알림 대상\": { \"rich_text\": [{ \"text\": { \"content\": \"{{$json[\"extra_user_ids\"]}}\" }}] },\n    \"갱신 알림일\": {{ $json[\"renewal_notify_date\"] ? '{ \"date\": { \"start\": \"' + $json[\"renewal_notify_date\"] + '\" }}' : '{ \"date\": null }' }},\n    \"거래처 통지일\": {{ $json[\"vendor_notify_date\"] ? '{ \"date\": { \"start\": \"' + $json[\"vendor_notify_date\"] + '\" }}' : '{ \"date\": null }' }},\n    \"상태\": { \"select\": { \"name\": \"진행중\" }}\n  }\n}",
+        "options": {}
+      },
+      "id": "node-notion-create",
+      "name": "Notion 페이지 생성",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_NOTION_CREDENTIAL_ID",
+          "name": "Notion Integration Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://slack.com/api/chat.postMessage",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json; charset=utf-8" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"channel\": \"{{$node[\"모달 입력값 파싱\"].json[\"registrant_id\"]}}\",\n  \"text\": \"✅ 계약 등록 완료\",\n  \"blocks\": [\n    { \"type\": \"section\", \"text\": { \"type\": \"mrkdwn\", \"text\": \"✅ *계약 등록이 완료되었습니다*\\n\\n*거래처:* {{$node[\"모달 입력값 파싱\"].json[\"vendor_name\"]}}\\n*서비스:* {{$node[\"모달 입력값 파싱\"].json[\"service_name\"]}}\\n*계약기간:* {{$node[\"모달 입력값 파싱\"].json[\"contract_start\"]}} ~ {{$node[\"모달 입력값 파싱\"].json[\"contract_end\"]}}\" }},\n    { \"type\": \"section\", \"text\": { \"type\": \"mrkdwn\", \"text\": \"<{{$json[\"url\"]}}|📄 Notion 페이지 열기>\" }},\n    { \"type\": \"context\", \"elements\": [{ \"type\": \"mrkdwn\", \"text\": \"📎 첨부파일이 있다면 위 Notion 페이지에 직접 업로드해 주세요.\" }] }\n  ]\n}",
+        "options": {}
+      },
+      "id": "node-dm-registrant",
+      "name": "등록자에게 DM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [920, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_SLACK_CREDENTIAL_ID",
+          "name": "Slack Bot Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "node-respond-b",
+      "name": "Slack에 빈 응답 (모달 닫힘)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1160, 300]
+    }
+  ],
+  "connections": {
+    "Slack Interactivity 수신": {
+      "main": [
+        [{ "node": "모달 입력값 파싱", "type": "main", "index": 0 }]
+      ]
+    },
+    "모달 입력값 파싱": {
+      "main": [
+        [{ "node": "Notion 페이지 생성", "type": "main", "index": 0 }]
+      ]
+    },
+    "Notion 페이지 생성": {
+      "main": [
+        [{ "node": "등록자에게 DM", "type": "main", "index": 0 }]
+      ]
+    },
+    "등록자에게 DM": {
+      "main": [
+        [{ "node": "Slack에 빈 응답 (모달 닫힘)", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    { "name": "계약봇" }
+  ],
+  "active": false,
+  "versionId": "1.0.0",
+  "meta": {
+    "description": "Slack 모달 제출을 받아 Notion DB에 한 행으로 적재하고, 등록자에게 완료 DM을 보냅니다."
+  }
+}

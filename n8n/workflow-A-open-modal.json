@@ -1,0 +1,86 @@
+{
+  "name": "계약봇 A — 모달 열기",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "contract-bot-slash",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "node-webhook-a",
+      "name": "Slack 슬래시 커맨드 수신",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 300],
+      "webhookId": "contract-bot-slash"
+    },
+    {
+      "parameters": {
+        "respondWith": "noData",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "node-respond-a",
+      "name": "즉시 200 응답 (Slack 3초 룰)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://slack.com/api/views.open",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json; charset=utf-8"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"trigger_id\": \"{{$node[\"Slack 슬래시 커맨드 수신\"].json[\"body\"][\"trigger_id\"]}}\",\n  \"view\": {\n    \"type\": \"modal\",\n    \"callback_id\": \"contract_submit\",\n    \"private_metadata\": \"contract_v1\",\n    \"title\": {\"type\": \"plain_text\", \"text\": \"계약 등록\"},\n    \"submit\": {\"type\": \"plain_text\", \"text\": \"등록\"},\n    \"close\": {\"type\": \"plain_text\", \"text\": \"취소\"},\n    \"blocks\": [\n      {\"type\": \"input\", \"block_id\": \"vendor_name\", \"label\": {\"type\": \"plain_text\", \"text\": \"거래처명\"}, \"element\": {\"type\": \"plain_text_input\", \"action_id\": \"value\", \"placeholder\": {\"type\": \"plain_text\", \"text\": \"예: ㈜아무개\"}}},\n      {\"type\": \"input\", \"block_id\": \"service_name\", \"label\": {\"type\": \"plain_text\", \"text\": \"서비스명\"}, \"element\": {\"type\": \"plain_text_input\", \"action_id\": \"value\", \"placeholder\": {\"type\": \"plain_text\", \"text\": \"예: 클라우드 호스팅\"}}},\n      {\"type\": \"input\", \"block_id\": \"contract_purpose\", \"optional\": true, \"label\": {\"type\": \"plain_text\", \"text\": \"계약 목적\"}, \"element\": {\"type\": \"plain_text_input\", \"action_id\": \"value\", \"multiline\": true}},\n      {\"type\": \"input\", \"block_id\": \"contract_start\", \"label\": {\"type\": \"plain_text\", \"text\": \"계약 시작일\"}, \"element\": {\"type\": \"datepicker\", \"action_id\": \"value\"}},\n      {\"type\": \"input\", \"block_id\": \"contract_end\", \"label\": {\"type\": \"plain_text\", \"text\": \"계약 종료일\"}, \"element\": {\"type\": \"datepicker\", \"action_id\": \"value\"}},\n      {\"type\": \"input\", \"block_id\": \"cost\", \"optional\": true, \"label\": {\"type\": \"plain_text\", \"text\": \"견적 비용 (KRW)\"}, \"element\": {\"type\": \"number_input\", \"action_id\": \"value\", \"is_decimal_allowed\": false}},\n      {\"type\": \"input\", \"block_id\": \"owner_user\", \"label\": {\"type\": \"plain_text\", \"text\": \"업무 담당자\"}, \"element\": {\"type\": \"users_select\", \"action_id\": \"value\"}},\n      {\"type\": \"input\", \"block_id\": \"extra_notify_users\", \"optional\": true, \"label\": {\"type\": \"plain_text\", \"text\": \"추가 알림 받을 사람\"}, \"element\": {\"type\": \"multi_users_select\", \"action_id\": \"value\"}},\n      {\"type\": \"input\", \"block_id\": \"renewal_notify_date\", \"optional\": true, \"label\": {\"type\": \"plain_text\", \"text\": \"갱신 알림일\"}, \"hint\": {\"type\": \"plain_text\", \"text\": \"이날 09:00에 담당자들에게 자동 알림이 갑니다\"}, \"element\": {\"type\": \"datepicker\", \"action_id\": \"value\"}},\n      {\"type\": \"input\", \"block_id\": \"vendor_notify_date\", \"optional\": true, \"label\": {\"type\": \"plain_text\", \"text\": \"거래처 통지 의무일\"}, \"element\": {\"type\": \"datepicker\", \"action_id\": \"value\"}},\n      {\"type\": \"context\", \"elements\": [{\"type\": \"mrkdwn\", \"text\": \"📎 *첨부파일*: 등록 후 생성될 Notion 페이지에 직접 업로드해 주세요.\"}]}\n    ]\n  }\n}",
+        "options": {}
+      },
+      "id": "node-views-open",
+      "name": "Slack views.open 호출",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_SLACK_CREDENTIAL_ID",
+          "name": "Slack Bot Token"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Slack 슬래시 커맨드 수신": {
+      "main": [
+        [
+          { "node": "즉시 200 응답 (Slack 3초 룰)", "type": "main", "index": 0 },
+          { "node": "Slack views.open 호출", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    { "name": "계약봇" }
+  ],
+  "active": false,
+  "versionId": "1.0.0",
+  "meta": {
+    "description": "Slack /계약봇 슬래시 커맨드를 받아 모달을 열어줍니다."
+  }
+}

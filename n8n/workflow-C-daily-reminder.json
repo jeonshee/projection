@@ -1,0 +1,222 @@
+{
+  "name": "계약봇 C — 매일 알림 발사",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 0 9 * * *"
+            }
+          ]
+        }
+      },
+      "id": "node-cron",
+      "name": "매일 09:00 KST 트리거",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 오늘 날짜를 KST 기준으로 YYYY-MM-DD 포맷.\nconst now = new Date();\nconst kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);\nconst today = kst.toISOString().slice(0, 10);\nreturn [{ json: { today } }];"
+      },
+      "id": "node-today",
+      "name": "오늘 날짜 계산",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.notion.com/v1/databases/{{$env[\"NOTION_DATABASE_ID\"]}}/query",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Notion-Version", "value": "2022-06-28" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"filter\": {\n    \"or\": [\n      { \"property\": \"갱신 알림일\",  \"date\": { \"equals\": \"{{$json[\"today\"]}}\" }},\n      { \"property\": \"거래처 통지일\", \"date\": { \"equals\": \"{{$json[\"today\"]}}\" }},\n      { \"property\": \"계약종료일\",   \"date\": { \"equals\": \"{{$json[\"today\"]}}\" }}\n    ]\n  },\n  \"page_size\": 100\n}",
+        "options": {}
+      },
+      "id": "node-notion-query",
+      "name": "Notion DB 조회 (오늘이 알림일)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_NOTION_CREDENTIAL_ID",
+          "name": "Notion Integration Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Notion 응답을 행 단위로 펼치고, 각 행마다 알림 종류를 분류해 발송 대상을 만든다.\nconst today = $node[\"오늘 날짜 계산\"].json.today;\nconst rows = $input.first().json.results || [];\nconst out = [];\n\nfor (const row of rows) {\n  const props = row.properties;\n  const getText = (p) => (p?.rich_text?.[0]?.plain_text) || '';\n  const getTitle = (p) => (p?.title?.[0]?.plain_text) || '';\n  const getDate = (p) => p?.date?.start || null;\n  const getSelect = (p) => p?.select?.name || null;\n  const getNum = (p) => (p?.number ?? null);\n\n  const vendor      = getTitle(props['거래처명']);\n  const service     = getText(props['서비스명']);\n  const startDate   = getDate(props['계약시작일']);\n  const endDate     = getDate(props['계약종료일']);\n  const renewalDate = getDate(props['갱신 알림일']);\n  const vendorDate  = getDate(props['거래처 통지일']);\n  const cost        = getNum(props['견적비용']);\n  const registrantId = getText(props['등록 담당자']);\n  const ownerId     = getText(props['업무 담당자']);\n  const extraIds    = getText(props['추가 알림 대상']);\n\n  const reasons = [];\n  if (renewalDate === today) reasons.push('갱신 알림');\n  if (vendorDate === today)  reasons.push('거래처 통지');\n  if (endDate === today)     reasons.push('계약 만료');\n  if (reasons.length === 0)  continue;\n\n  const recipientSet = new Set();\n  if (registrantId) recipientSet.add(registrantId);\n  if (ownerId) recipientSet.add(ownerId);\n  for (const id of extraIds.split(',').map((s) => s.trim()).filter(Boolean)) {\n    recipientSet.add(id);\n  }\n\n  for (const userId of recipientSet) {\n    out.push({\n      json: {\n        page_id: row.id,\n        page_url: row.url,\n        vendor,\n        service,\n        start_date: startDate,\n        end_date: endDate,\n        cost,\n        reasons: reasons.join(' / '),\n        recipient_id: userId,\n        is_expired_today: endDate === today\n      }\n    });\n  }\n}\n\nreturn out;"
+      },
+      "id": "node-fanout",
+      "name": "알림 대상 펼치기",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://slack.com/api/chat.postMessage",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json; charset=utf-8" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"channel\": \"{{$json[\"recipient_id\"]}}\",\n  \"text\": \"📌 계약 알림 — {{$json[\"vendor\"]}}\",\n  \"blocks\": [\n    { \"type\": \"header\", \"text\": { \"type\": \"plain_text\", \"text\": \"📌 계약 알림 ({{$json[\"reasons\"]}})\" }},\n    { \"type\": \"section\", \"fields\": [\n      { \"type\": \"mrkdwn\", \"text\": \"*거래처:*\\n{{$json[\"vendor\"]}}\" },\n      { \"type\": \"mrkdwn\", \"text\": \"*서비스:*\\n{{$json[\"service\"]}}\" },\n      { \"type\": \"mrkdwn\", \"text\": \"*시작일:*\\n{{$json[\"start_date\"]}}\" },\n      { \"type\": \"mrkdwn\", \"text\": \"*종료일:*\\n{{$json[\"end_date\"]}}\" }\n    ]},\n    { \"type\": \"section\", \"text\": { \"type\": \"mrkdwn\", \"text\": \"<{{$json[\"page_url\"]}}|📄 Notion 페이지 열기>\" }}\n  ]\n}",
+        "options": {}
+      },
+      "id": "node-send-dm",
+      "name": "담당자에게 DM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1160, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_SLACK_CREDENTIAL_ID",
+          "name": "Slack Bot Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// 만료된 건만 상태를 '만료'로 업데이트해야 함을 표시.\nreturn { json: { ...$json, should_mark_expired: $json.is_expired_today === true }};"
+      },
+      "id": "node-decide-expire",
+      "name": "만료 처리 필요 여부",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1400, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "expired-cond",
+              "leftValue": "={{$json[\"should_mark_expired\"]}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "node-if-expired",
+      "name": "만료된 건만 진행",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1640, 300]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.notion.com/v1/pages/{{$json[\"page_id\"]}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Notion-Version", "value": "2022-06-28" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"properties\": {\n    \"상태\": { \"select\": { \"name\": \"만료\" }}\n  }\n}",
+        "options": {}
+      },
+      "id": "node-mark-expired",
+      "name": "Notion 상태 → 만료",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1880, 220],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_NOTION_CREDENTIAL_ID",
+          "name": "Notion Integration Token"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "매일 09:00 KST 트리거": {
+      "main": [
+        [{ "node": "오늘 날짜 계산", "type": "main", "index": 0 }]
+      ]
+    },
+    "오늘 날짜 계산": {
+      "main": [
+        [{ "node": "Notion DB 조회 (오늘이 알림일)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Notion DB 조회 (오늘이 알림일)": {
+      "main": [
+        [{ "node": "알림 대상 펼치기", "type": "main", "index": 0 }]
+      ]
+    },
+    "알림 대상 펼치기": {
+      "main": [
+        [{ "node": "담당자에게 DM", "type": "main", "index": 0 }]
+      ]
+    },
+    "담당자에게 DM": {
+      "main": [
+        [{ "node": "만료 처리 필요 여부", "type": "main", "index": 0 }]
+      ]
+    },
+    "만료 처리 필요 여부": {
+      "main": [
+        [{ "node": "만료된 건만 진행", "type": "main", "index": 0 }]
+      ]
+    },
+    "만료된 건만 진행": {
+      "main": [
+        [{ "node": "Notion 상태 → 만료", "type": "main", "index": 0 }],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    { "name": "계약봇" }
+  ],
+  "active": false,
+  "versionId": "1.0.0",
+  "meta": {
+    "description": "매일 09:00 KST에 Notion DB를 스캔해 오늘이 갱신/통지/만료일인 계약을 찾아 담당자에게 DM을 보냅니다. 만료일이 오늘이면 상태도 '만료'로 변경합니다."
+  }
+}

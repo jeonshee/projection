@@ -1,0 +1,39 @@
+_metadata:
+  major_version: 1
+  minor_version: 1
+
+display_information:
+  name: 계약봇
+  description: 계약 등록·갱신 알림을 자동화하는 사내 봇
+  background_color: "#2c3e50"
+
+features:
+  bot_user:
+    display_name: 계약봇
+    always_online: true
+
+  slash_commands:
+    - command: /계약봇
+      url: <<REPLACE_WITH_N8N_WEBHOOK_A>>
+      description: 새 계약을 등록합니다
+      usage_hint: ""
+      should_escape: false
+
+oauth_config:
+  scopes:
+    bot:
+      - commands
+      - chat:write
+      - chat:write.public
+      - users:read
+      - users:read.email
+      - im:write
+
+settings:
+  interactivity:
+    is_enabled: true
+    request_url: <<REPLACE_WITH_N8N_WEBHOOK_B>>
+
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false
