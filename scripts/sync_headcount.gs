@@ -29,22 +29,25 @@ function syncHeadcount() {
 
   const srcAll = src.getRange(1, 1, src.getLastRow(), src.getLastColumn()).getValues();
 
-  const headerRow = findSectionHeaderRow(srcAll);
-  if (headerRow < 0) throw new Error('소스에서 "조직별인원" 표(구분 + N월 헤더)를 찾지 못했습니다.');
+  const section = findSectionHeader(srcAll);
+  if (!section) throw new Error('소스에서 "조직별인원" 표(구분 + N월 헤더)를 찾지 못했습니다.');
+  const headerRow = section.row;
+  const labelCol = section.labelCol;     // 0-based — "구분" 셀이 있는 컬럼
 
   // 소스 월 → 컬럼 인덱스(0-based)
   const sourceMonthCol = {};
   srcAll[headerRow].forEach((h, idx) => {
-    const m = String(h).trim().match(/^(\d{1,2})월$/);
+    const m = String(h).trim().match(/^(\d{1,2})\s*월$/);
     if (m) sourceMonthCol[Number(m[1])] = idx;
   });
 
-  // 소스 라벨 → {월: 값}
+  // 소스 라벨 → {월: 값}.  빈 행이 중간에 있을 수 있으므로
+  // "총 인원수"를 만날 때까지 계속 읽는다.
   const sourceByLabel = {};
   for (let r = headerRow + 1; r < srcAll.length; r++) {
-    const label = String(srcAll[r][1] || '').trim();
-    if (!label) break;
-    if (label === '총 인원수' || label === '총인원수') break;
+    const label = String(srcAll[r][labelCol] || '').trim();
+    if (!label) continue;
+    if (label === '총 인원수' || label === '총인원수' || /^총\s*인원수$/.test(label)) break;
     const months = {};
     Object.keys(sourceMonthCol).forEach(function(month) {
       months[month] = srcAll[r][sourceMonthCol[month]];
@@ -94,15 +97,21 @@ function syncHeadcount() {
 
 /**
  * 소스 시트에서 "구분" + "N월" 헤더가 함께 있는 행(=조직별인원 표 헤더)을 찾는다.
+ * 라벨 컬럼은 "구분" 셀이 있는 컬럼 인덱스(0-based)로 반환한다.
  */
-function findSectionHeaderRow(srcAll) {
+function findSectionHeader(srcAll) {
   for (let i = 0; i < srcAll.length; i++) {
     const row = srcAll[i];
-    const hasGubun = row.some(c => String(c).trim() === '구분');
-    const hasJan = row.some(c => String(c).trim() === '1월');
-    if (hasGubun && hasJan) return i;
+    let labelCol = -1;
+    let hasJan = false;
+    for (let j = 0; j < row.length; j++) {
+      const v = String(row[j]).trim();
+      if (v === '구분') labelCol = j;
+      if (/^1\s*월$/.test(v)) hasJan = true;
+    }
+    if (labelCol >= 0 && hasJan) return { row: i, labelCol: labelCol };
   }
-  return -1;
+  return null;
 }
 
 /**
@@ -115,6 +124,71 @@ function parseTargetMonth(header) {
     if (m) return Number(m[1]);
   }
   return null;
+}
+
+/**
+ * 진단용. Apps Script 편집기에서 이 함수를 실행한 뒤 "실행 로그"를 확인하면
+ * 소스/타겟에서 무엇을 읽었는지, 어떤 라벨이 매칭되는지 알 수 있다.
+ */
+function debugSync() {
+  const src = SpreadsheetApp.openById(SOURCE_SHEET_ID).getSheetByName(SOURCE_TAB_NAME);
+  if (!src) { console.log('❌ 소스 탭 못 찾음: ' + SOURCE_TAB_NAME); return; }
+  const dst = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(TARGET_TAB_NAME);
+  if (!dst) { console.log('❌ 타겟 탭 못 찾음: ' + TARGET_TAB_NAME); return; }
+
+  const srcAll = src.getRange(1, 1, src.getLastRow(), src.getLastColumn()).getValues();
+  console.log('소스 시트 크기: ' + src.getLastRow() + 'x' + src.getLastColumn());
+
+  const section = findSectionHeader(srcAll);
+  if (!section) {
+    console.log('❌ "구분" + "1월" 헤더 행을 찾지 못함. 처음 20행의 B/C/D열 상태:');
+    for (let i = 0; i < Math.min(20, srcAll.length); i++) {
+      console.log('  row ' + (i + 1) + ': ' + JSON.stringify(srcAll[i].slice(0, 6)));
+    }
+    return;
+  }
+  console.log('✅ 헤더 행 발견: row=' + (section.row + 1) + ', labelCol=' + (section.labelCol + 1) +
+              ' (즉, ' + String.fromCharCode(65 + section.labelCol) + '열에 라벨)');
+  console.log('헤더 내용: ' + JSON.stringify(srcAll[section.row]));
+
+  // 월 컬럼
+  const sourceMonthCol = {};
+  srcAll[section.row].forEach((h, idx) => {
+    const m = String(h).trim().match(/^(\d{1,2})\s*월$/);
+    if (m) sourceMonthCol[Number(m[1])] = idx;
+  });
+  console.log('소스 월 컬럼 맵: ' + JSON.stringify(sourceMonthCol));
+
+  // 소스 라벨
+  const srcLabels = [];
+  for (let r = section.row + 1; r < srcAll.length; r++) {
+    const label = String(srcAll[r][section.labelCol] || '').trim();
+    if (label === '총 인원수' || /^총\s*인원수$/.test(label)) break;
+    if (label) srcLabels.push(label);
+  }
+  console.log('소스 라벨 ' + srcLabels.length + '개: ' + JSON.stringify(srcLabels));
+
+  // 타겟 헤더
+  const dstHeaders = dst.getRange(TARGET_HEADER_ROW, 1, 1, dst.getLastColumn()).getValues()[0];
+  console.log('타겟 헤더 row ' + TARGET_HEADER_ROW + ': ' + JSON.stringify(dstHeaders));
+  const targetMonthCol = {};
+  dstHeaders.forEach((h, idx) => {
+    const month = parseTargetMonth(h);
+    if (month) targetMonthCol[month] = idx + 1;
+  });
+  console.log('타겟 월 컬럼 맵: ' + JSON.stringify(targetMonthCol));
+
+  // 타겟 라벨
+  const dstLabels = dst.getRange(TARGET_DATA_FIRST_ROW, TARGET_LABEL_COL,
+      TARGET_DATA_LAST_ROW - TARGET_DATA_FIRST_ROW + 1, 1).getValues()
+      .map(r => String(r[0] || '').trim()).filter(s => s);
+  console.log('타겟 라벨 ' + dstLabels.length + '개: ' + JSON.stringify(dstLabels));
+
+  // 매칭 결과
+  const matched = dstLabels.filter(l => srcLabels.indexOf(l) >= 0);
+  const unmatched = dstLabels.filter(l => srcLabels.indexOf(l) < 0);
+  console.log('✅ 매칭 ' + matched.length + '개: ' + JSON.stringify(matched));
+  if (unmatched.length) console.log('⚠️ 매칭 안 됨(' + unmatched.length + '): ' + JSON.stringify(unmatched));
 }
 
 /**
@@ -139,6 +213,7 @@ function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('인원수 동기화')
     .addItem('지금 동기화', 'syncHeadcount')
+    .addItem('진단 실행 (로그 확인)', 'debugSync')
     .addItem('매일 08시 자동 실행 설치', 'installDailyTrigger')
     .addToUi();
 }
